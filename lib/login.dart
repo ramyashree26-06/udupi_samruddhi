@@ -76,6 +76,15 @@ class _LoginScreenState extends State<_LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Text(Db.s('hotel_name'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700, color: kMuted)),
+        ),
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -86,10 +95,9 @@ class _LoginScreenState extends State<_LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset('assets/logo_full.png', height: 70),
-                  const SizedBox(height: 10),
-                  Text(Db.s('hotel_name'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 22),
+                  const Text('Login',
+                      style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
                   const Text('Sign in to continue', style: TextStyle(color: kMuted)),
                   const SizedBox(height: 22),

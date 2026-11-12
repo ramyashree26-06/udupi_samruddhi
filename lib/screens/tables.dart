@@ -183,59 +183,79 @@ class _TablesScreenState extends State<TablesScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          scrollable: true,
-          title: Text(t == null ? 'Add table' : 'Edit table'),
+          scrollable: false,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          titlePadding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(8, 0, 12, 8),
+          title: Text(t == null ? 'Add table' : 'Edit table',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           content: SizedBox(
-            width: double.maxFinite,
+            width: 320,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: nameC,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Table number or name'),
-                ),
-                const SizedBox(height: 16),
-                const Text('Chairs', style: TextStyle(fontWeight: FontWeight.w800)),
+                // Number and chairs on one line.
                 Row(children: [
+                  SizedBox(
+                    width: 100,
+                    child: TextField(
+                      controller: nameC,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: const InputDecoration(
+                          labelText: 'Table no.', isDense: true),
+                    ),
+                  ),
+                  const Spacer(),
+                  const Text('Chairs',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   IconButton(
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.remove_circle_outline),
                     onPressed: chairs > 1 ? () => setS(() => chairs--) : null,
                   ),
                   Text('$chairs',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                   IconButton(
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.add_circle_outline),
                     onPressed: chairs < 12 ? () => setS(() => chairs++) : null,
                   ),
                 ]),
-                Wrap(spacing: 8, children: [
+                const SizedBox(height: 4),
+                Wrap(spacing: 6, children: [
                   for (final c in const [2, 4, 6, 8])
                     ChoiceChip(
-                      label: Text('$c'),
+                      label: Text('$c chairs'),
+                      labelStyle: const TextStyle(fontSize: 12),
+                      visualDensity: VisualDensity.compact,
                       selected: chairs == c,
                       onSelected: (_) => setS(() => chairs = c),
                     ),
                 ]),
-                const SizedBox(height: 16),
-                const Text('Shape', style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 6),
-                Wrap(spacing: 8, children: [
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Text('Shape',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  const SizedBox(width: 10),
                   ChoiceChip(
                       label: const Text('Square'),
+                      labelStyle: const TextStyle(fontSize: 12),
+                      visualDensity: VisualDensity.compact,
                       selected: shape == 'square',
                       onSelected: (_) => setS(() => shape = 'square')),
+                  const SizedBox(width: 6),
                   ChoiceChip(
                       label: const Text('Round'),
+                      labelStyle: const TextStyle(fontSize: 12),
+                      visualDensity: VisualDensity.compact,
                       selected: shape == 'round',
                       onSelected: (_) => setS(() => shape = 'round')),
                 ]),
-                const SizedBox(height: 16),
-                Text('Size  (${(size * 100).round()}%)',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
                 Row(children: [
-                  const Icon(Icons.table_restaurant_outlined, size: 16),
+                  Text('Size ${(size * 100).round()}%',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   Expanded(
                     child: Slider(
                       value: size,
@@ -246,7 +266,6 @@ class _TablesScreenState extends State<TablesScreen> {
                       onChanged: (v) => setS(() => size = v),
                     ),
                   ),
-                  const Icon(Icons.table_restaurant_outlined, size: 28),
                 ]),
               ],
             ),
