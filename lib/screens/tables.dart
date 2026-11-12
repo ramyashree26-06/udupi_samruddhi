@@ -298,7 +298,7 @@ class _TablesScreenState extends State<TablesScreen> {
 
   Future<void> _tap(TableDef t) async {
     if (editMode) {
-      setState(() => selId = t.id);
+      await _editTable(t);
       return;
     }
     final label = 'Table: ${t.name}';
@@ -325,12 +325,6 @@ class _TablesScreenState extends State<TablesScreen> {
           SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, 'Free'),
               child: const Text('Mark Free')),
-          SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'rename'),
-              child: const Text('Edit table (number, chairs, shape, size)')),
-          SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'delete'),
-              child: const Text('Delete table')),
         ],
       ),
     );
@@ -388,6 +382,9 @@ class _TablesScreenState extends State<TablesScreen> {
           children: [
             Row(children: [
               Expanded(child: orangeButton('Add Table', _add)),
+              const SizedBox(width: 10),
+              _viewBtn(editMode ? 'Done' : 'Edit',
+                  editMode ? Icons.check : Icons.edit_outlined, editMode, _toggleEdit),
             ]),
             const SizedBox(height: 10),
             Row(children: [
@@ -431,6 +428,14 @@ class _TablesScreenState extends State<TablesScreen> {
           PageHead('Table Management', actions: [
             orangeButton('Add Table', _add),
             ChoiceChip(
+                label: Text(editMode ? 'Done' : 'Edit'),
+                avatar: Icon(editMode ? Icons.check : Icons.edit_outlined,
+                    size: 16, color: editMode ? Colors.white : kInk),
+                selected: editMode,
+                selectedColor: kOrange,
+                labelStyle: TextStyle(color: editMode ? Colors.white : kInk),
+                onSelected: (_) => _toggleEdit()),
+            ChoiceChip(
                 label: const Text('Floor View'),
                 selected: !listView,
                 selectedColor: kOrange,
@@ -472,6 +477,13 @@ class _TablesScreenState extends State<TablesScreen> {
   }
 
   Widget _floor() => _canvas();
+
+  void _toggleEdit() => setState(() {
+        editMode = !editMode;
+        moveId = null;
+        moveFrom = null;
+        selId = null;
+      });
 
   /// One table: the table with its chairs around it.
   Widget _tableBox(TableDef t) {
@@ -540,11 +552,14 @@ class _TablesScreenState extends State<TablesScreen> {
                 if (list.isEmpty)
                   const Center(child: Text('No tables yet. Press Add Table.')),
                 if (list.isNotEmpty)
-                  const Positioned(
+                  Positioned(
                     left: 12,
                     bottom: 6,
-                    child: Text('Press and hold a table, then drag to move it',
-                        style: TextStyle(color: kMuted, fontSize: 11.5)),
+                    child: Text(
+                        editMode
+                            ? 'Edit mode: drag a table to move it. Tap a table to change number, chairs, shape or size.'
+                            : 'Tap a table to start an order.',
+                        style: const TextStyle(color: kMuted, fontSize: 11.5)),
                   ),
                 for (var i = 0; i < list.length; i++)
                   Positioned(
@@ -555,25 +570,32 @@ class _TablesScreenState extends State<TablesScreen> {
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => _tap(list[i]),
-                      onLongPressStart: (_) => setState(() {
-                        moveId = list[i].id;
-                        moveFrom = pos(i, list[i]);
-                      }),
-                      onLongPressMoveUpdate: (d) {
-                        if (moveFrom == null) return;
-                        final tx = maxX(list[i]), ty = maxY(list[i]);
-                        final np = moveFrom! + d.offsetFromOrigin;
-                        final nx = tx <= 0 ? 0.0 : (np.dx / tx).clamp(0.0, 1.0);
-                        final ny = ty <= 0 ? 0.0 : (np.dy / ty).clamp(0.0, 1.0);
-                        setState(() => list[i] = list[i].copy(fx: nx, fy: ny));
-                      },
-                      onLongPressEnd: (_) {
-                        setState(() {
-                          moveId = null;
-                          moveFrom = null;
-                        });
-                        Db2.saveTableList(list);
-                      },
+                      // Edit mode only: drag the table to move it.
+                      onPanStart: editMode
+                          ? (_) => setState(() {
+                                moveId = list[i].id;
+                                moveFrom = pos(i, list[i]);
+                              })
+                          : null,
+                      onPanUpdate: editMode
+                          ? (d) {
+                              if (moveFrom == null) return;
+                              moveFrom = moveFrom! + d.delta;
+                              final tx = maxX(list[i]), ty = maxY(list[i]);
+                              final nx = tx <= 0 ? 0.0 : (moveFrom!.dx / tx).clamp(0.0, 1.0);
+                              final ny = ty <= 0 ? 0.0 : (moveFrom!.dy / ty).clamp(0.0, 1.0);
+                              setState(() => list[i] = list[i].copy(fx: nx, fy: ny));
+                            }
+                          : null,
+                      onPanEnd: editMode
+                          ? (_) {
+                              setState(() {
+                                moveId = null;
+                                moveFrom = null;
+                              });
+                              Db2.saveTableList(list);
+                            }
+                          : null,
                       child: Container(
                         decoration: moveId == list[i].id
                             ? BoxDecoration(
@@ -582,23 +604,6 @@ class _TablesScreenState extends State<TablesScreen> {
                             : null,
                         child: Stack(children: [
                           Positioned.fill(child: _tableBox(list[i])),
-                          Positioned(
-                            right: 4,
-                            top: 4,
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: () => _editTable(list[i]),
-                              child: Container(
-                                width: 26,
-                                height: 26,
-                                decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: kTan)),
-                                child: const Icon(Icons.edit, size: 14, color: kInk),
-                              ),
-                            ),
-                          ),
                         ]),
                       ),
                     ),
@@ -640,11 +645,12 @@ class _TablesScreenState extends State<TablesScreen> {
                             child: Text(r == null
                                 ? '-'
                                 : '${DateTime.now().difference(r.createdAt).inMinutes} min')),
-                        IconButton(
-                            visualDensity: VisualDensity.compact,
-                            tooltip: 'Edit table',
-                            onPressed: () => _editTable(t),
-                            icon: const Icon(Icons.edit_outlined, size: 18)),
+                        if (editMode)
+                          IconButton(
+                              visualDensity: VisualDensity.compact,
+                              tooltip: 'Edit table',
+                              onPressed: () => _editTable(t),
+                              icon: const Icon(Icons.edit_outlined, size: 18)),
                       ]),
                     ),
                   );

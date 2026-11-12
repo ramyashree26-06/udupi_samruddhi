@@ -131,14 +131,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _title(String t) => Padding(
         padding: const EdgeInsets.only(top: 22, bottom: 8),
-        child: Text(t, style: Theme.of(context).textTheme.titleMedium),
+        child: Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
       );
 
   Widget _field(TextEditingController c, String label, {int lines = 1, double? width}) {
     final f = TextField(
       controller: c,
       maxLines: lines,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontSize: 12.5),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: const OutlineInputBorder(),
+      ),
     );
     return width == null ? f : SizedBox(width: width, child: f);
   }
@@ -176,7 +183,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             OutlinedButton(onPressed: _openDataFolder, child: const Text('Open data folder')),
         ]),
         const SizedBox(height: 6),
-        const Text('Auto backup time is set in the Backup & Restore tab.'),
+        const Text('Auto backup time is set in the Backup & Restore tab.',
+            style: TextStyle(fontSize: 12)),
       ];
 
   List<Widget> _billing() => [
@@ -187,6 +195,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ButtonSegment(value: 'token', label: Text('Token No.')),
             ButtonSegment(value: 'none', label: Text('None')),
           ],
+          style: const ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12.5)),
+          ),
           selected: {orderMode},
           onSelectionChanged: (s) => setState(() => orderMode = s.first),
         ),
@@ -199,15 +211,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _title('Kitchen slips'),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Print a separate slip for each section'),
-          subtitle: const Text('Off = one slip with all items'),
+          dense: true,
+          title: const Text('Print a separate slip for each section', style: TextStyle(fontSize: 13)),
+          subtitle: const Text('Off = one slip with all items', style: TextStyle(fontSize: 11.5)),
           value: split,
           onChanged: (v) => setState(() => split = v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Print KOT slip with every bill'),
-          subtitle: const Text('For hotels with no kitchen printer'),
+          dense: true,
+          title: const Text('Print KOT slip with every bill', style: TextStyle(fontSize: 13)),
+          subtitle: const Text('For hotels with no kitchen printer', style: TextStyle(fontSize: 11.5)),
           value: kotWithBill,
           onChanged: (v) => setState(() => kotWithBill = v),
         ),

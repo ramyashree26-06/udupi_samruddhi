@@ -19,7 +19,11 @@ final ValueNotifier<Set<String>> allowed =
 final Set<String> hiddenModules =
     Platform.isAndroid ? <String>{'inventory', 'kitchen'} : <String>{'kitchen'};
 
-/// True when the app is asking for a PIN.
+/// Who is signed in (shown in the menu) and their role.
+final ValueNotifier<String> currentUser = ValueNotifier<String>('');
+final ValueNotifier<String> currentRole = ValueNotifier<String>('');
+
+/// True when the app is asking for username and password.
 final ValueNotifier<bool> locked = ValueNotifier<bool>(false);
 
 /// True when at least one staff PIN exists (then a lock button shows).

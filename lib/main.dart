@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -35,9 +36,10 @@ Future<void> main() async {
     await Db2.resetPinsIfAsked();
     await Db.backup(); // one automatic backup per day
   } catch (_) {}
-  final on = await Db2.pinLoginOn();
-  pinOn.value = on;
-  locked.value = on; // ask for a PIN at start only when PINs exist
+  try {
+    await Db2.ensureAdminLogin();
+  } catch (_) {}
+  locked.value = true; // always ask for username and password at start
   runApp(const BillingApp());
 }
 
@@ -72,7 +74,8 @@ class _ShellState extends State<Shell> {
   Timer? timer;
   String lastBackupDay = '';
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
-  bool narrow = false; // phone or small tablet: menu opens from a button
+  bool narrow = false; // phone or small tablet
+  bool drawerMode = false; // menu hidden behind a button (all Android devices)
 
   @override
   void initState() {
@@ -150,6 +153,7 @@ class _ShellState extends State<Shell> {
             key = Db2.allModules.firstWhere(ok.contains, orElse: () => 'pos');
           }
           narrow = MediaQuery.of(context).size.width < 1000;
+          drawerMode = narrow || Platform.isAndroid;
           final body = Column(
             children: [
               _topBar(key),
@@ -165,16 +169,16 @@ class _ShellState extends State<Shell> {
           return Scaffold(
             key: scaffoldKey,
             backgroundColor: narrow ? kCream : Colors.white,
-            drawer: narrow
+            drawer: drawerMode
                 ? Drawer(
                     backgroundColor: Colors.transparent,
                     elevation: 0,
-                    width: 280,
+                    width: narrow ? 280 : 240,
                     child: _sidebar(key, ok),
                   )
                 : null,
             bottomNavigationBar: narrow ? _bottomNav(key, ok) : null,
-            body: narrow
+            body: drawerMode
                 ? SafeArea(bottom: false, child: body)
                 : Row(
                     children: [
@@ -260,19 +264,35 @@ class _ShellState extends State<Shell> {
               ],
             ),
           ),
-          ValueListenableBuilder<bool>(
-            valueListenable: pinOn,
-            builder: (context, on, _) => on
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: TextButton.icon(
-                      style: TextButton.styleFrom(foregroundColor: kSideText),
-                      onPressed: () => locked.value = true,
-                      icon: const Icon(Icons.lock_outline, size: 18),
-                      label: const Text('Lock / Change user'),
+          ValueListenableBuilder<String>(
+            valueListenable: currentUser,
+            builder: (context, who, _) => Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (who.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 2),
+                      child: Text('Signed in: $who (${currentRole.value})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: kTan, fontSize: 12)),
                     ),
-                  )
-                : const SizedBox.shrink(),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: kSideText),
+                    onPressed: () {
+                      if (drawerMode) scaffoldKey.currentState?.closeDrawer();
+                      currentUser.value = '';
+                      currentRole.value = '';
+                      locked.value = true;
+                    },
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Log out'),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -290,7 +310,7 @@ class _ShellState extends State<Shell> {
           borderRadius: BorderRadius.circular(9),
           onTap: () {
             navIndex.value = Db2.allModules.indexOf(k);
-            if (narrow) scaffoldKey.currentState?.closeDrawer();
+            if (drawerMode) scaffoldKey.currentState?.closeDrawer();
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -428,7 +448,7 @@ class _ShellState extends State<Shell> {
       ),
       child: Row(
         children: [
-          if (narrow)
+          if (drawerMode)
             IconButton(
               icon: const Icon(Icons.menu),
               tooltip: 'Menu',

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -83,6 +84,7 @@ class Db2 {
         'CREATE TABLE IF NOT EXISTS staff(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, role TEXT NOT NULL, phone TEXT NOT NULL DEFAULT \'\', active INTEGER NOT NULL DEFAULT 1, pin TEXT NOT NULL DEFAULT \'\')');
     await d.execute(
         'CREATE TABLE IF NOT EXISTS table_state(num INTEGER PRIMARY KEY, state TEXT NOT NULL, note TEXT NOT NULL DEFAULT \'\')');
+    await _loginCols(d);
     final r = await d.rawQuery('SELECT COUNT(*) AS c FROM roles');
     if ((r.first['c'] as int) == 0) {
       await d.insert('roles', {'name': 'Admin', 'perms': 'all'});
@@ -327,19 +329,30 @@ class Db2 {
       _d.query('staff', orderBy: 'name');
 
   static Future<void> saveStaff(int? id, String name, String role, String phone,
-      bool active, String pin) async {
-    final m = {
+      bool active, String pin,
+      {String? username, String? password}) async {
+    final m = <String, Object?>{
       'name': name,
       'role': role,
       'phone': phone,
       'active': active ? 1 : 0,
       'pin': pin,
     };
+    if (username != null) m['username'] = username.trim();
+    if (password != null && password.isNotEmpty) m['pass_hash'] = hashPass(password);
     if (id == null) {
       await _d.insert('staff', m);
     } else {
       await _d.update('staff', m, where: 'id = ?', whereArgs: [id]);
     }
+  }
+
+  /// True when another staff member already uses this username.
+  static Future<bool> usernameTaken(String username, int? exceptId) async {
+    final r = await _d.query('staff',
+        where: 'LOWER(username) = ? AND id != ?',
+        whereArgs: [username.trim().toLowerCase(), exceptId ?? -1]);
+    return r.isNotEmpty;
   }
 
   static Future<void> deleteStaff(int id) async {
@@ -360,6 +373,64 @@ class Db2 {
 
   static Future<void> deleteRole(int id) async {
     await _d.delete('roles', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ------------------------------------------------------------ login
+  /// Starting password of the admin user. The Admin can change it in Staff.
+  static const String _defaultAdminPass = 'admin@123';
+
+  static String hashPass(String pass) =>
+      sha256.convert(utf8.encode('udupi|$pass')).toString();
+
+  static Future<void> _loginCols(Database d) async {
+    final cols = await d.rawQuery('PRAGMA table_info(staff)');
+    final names = {for (final c in cols) c['name'] as String};
+    if (!names.contains('username')) {
+      await d.execute("ALTER TABLE staff ADD COLUMN username TEXT NOT NULL DEFAULT ''");
+    }
+    if (!names.contains('pass_hash')) {
+      await d.execute("ALTER TABLE staff ADD COLUMN pass_hash TEXT NOT NULL DEFAULT ''");
+    }
+  }
+
+  /// Makes sure the user "admin" exists (role Admin, sees everything).
+  static Future<void> ensureAdminLogin() async {
+    await _loginCols(_d);
+    final role = await _d.query('roles', where: 'name = ?', whereArgs: ['Admin']);
+    if (role.isEmpty) await _d.insert('roles', {'name': 'Admin', 'perms': 'all'});
+    final a = await _d.query('staff', where: "LOWER(username) = 'admin'");
+    if (a.isNotEmpty) return;
+    final h = hashPass(_defaultAdminPass);
+    final owner = await _d.query('staff',
+        where: "role = 'Admin' AND username = ''", orderBy: 'id', limit: 1);
+    if (owner.isNotEmpty) {
+      await _d.update('staff', {'username': 'admin', 'pass_hash': h, 'active': 1},
+          where: 'id = ?', whereArgs: [owner.first['id']]);
+    } else {
+      await _d.insert('staff', {
+        'name': 'Admin',
+        'role': 'Admin',
+        'phone': '',
+        'active': 1,
+        'pin': '',
+        'username': 'admin',
+        'pass_hash': h,
+      });
+    }
+  }
+
+  /// Checks username + password. Returns name, role and the pages allowed,
+  /// or null when they do not match (or the user is Inactive).
+  static Future<Map<String, Object?>?> login(String user, String pass) async {
+    await ensureAdminLogin();
+    final u = user.trim().toLowerCase();
+    if (u.isEmpty || pass.isEmpty) return null;
+    final r = await _d.rawQuery(
+        'SELECT st.name AS name, st.role AS role, ro.perms AS perms '
+        'FROM staff st JOIN roles ro ON ro.name = st.role '
+        'WHERE st.active = 1 AND LOWER(st.username) = ? AND st.pass_hash = ? LIMIT 1',
+        [u, hashPass(pass)]);
+    return r.isEmpty ? null : r.first;
   }
 
   /// True when at least one active staff member has a PIN. Then the app
@@ -392,6 +463,8 @@ class Db2 {
     final f = File(p.join(Db.baseDir, 'reset_pin.txt'));
     if (!await f.exists()) return false;
     await _d.update('staff', {'pin': ''});
+    await _d.update('staff', {'pass_hash': hashPass(_defaultAdminPass)},
+        where: "LOWER(username) = 'admin'");
     try {
       await f.delete();
     } catch (_) {}

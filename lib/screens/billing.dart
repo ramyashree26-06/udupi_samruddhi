@@ -33,11 +33,21 @@ class _BillingScreenState extends State<BillingScreen> {
   @override
   void initState() {
     super.initState();
+    cart.addListener(_cartChanged);
     _init();
+  }
+
+  /// Phone: when the last item is removed from the cart, go back to the dishes.
+  void _cartChanged() {
+    if (!cart.isEmpty || !_showOrder) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && cart.isEmpty && _showOrder) setState(() => _showOrder = false);
+    });
   }
 
   @override
   void dispose() {
+    cart.removeListener(_cartChanged);
     search.dispose();
     searchFocus.dispose();
     super.dispose();
@@ -417,7 +427,13 @@ class _BillingScreenState extends State<BillingScreen> {
   @override
   Widget build(BuildContext context) {
     final small = MediaQuery.of(context).size.width < 800;
-    return Padding(
+    // Phone back button: from the Order view go back to the dishes, not out of the app.
+    return PopScope(
+      canPop: !(_showOrder && MediaQuery.of(context).size.width < 760),
+      onPopInvoked: (didPop) {
+        if (!didPop) setState(() => _showOrder = false);
+      },
+      child: Padding(
       padding: small
           ? const EdgeInsets.fromLTRB(16, 4, 16, 10)
           : const EdgeInsets.fromLTRB(20, 14, 20, 16),
@@ -425,15 +441,7 @@ class _BillingScreenState extends State<BillingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (small)
-            ListenableBuilder(
-              listenable: cart,
-              builder: (context, _) => Row(
-                children: [
-                  _hdrBtn(Icons.table_restaurant_outlined, 'Table', false,
-                      () => navIndex.value = 2),
-                ],
-              ),
-            )
+            const SizedBox.shrink()
           else
           Wrap(
             alignment: WrapAlignment.spaceBetween,
@@ -528,7 +536,7 @@ class _BillingScreenState extends State<BillingScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   static final ButtonStyle _softBtn = OutlinedButton.styleFrom(
@@ -686,6 +694,7 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Widget _menuSide() {
     final small = isNarrow(context);
+    final phoneW = MediaQuery.of(context).size.width < 800;
     return Padding(
       padding: small
           ? EdgeInsets.zero
@@ -696,6 +705,21 @@ class _BillingScreenState extends State<BillingScreen> {
           if (small) ...[
             _sectionChips(),
             const SizedBox(height: 8),
+            // Phone: Category and Table on one line, search bar after them.
+            if (phoneW) ...[
+              Row(
+                children: [
+                  if (!searching) ...[
+                    Expanded(flex: 2, child: _groupDrop()),
+                    const SizedBox(width: 8),
+                  ] else
+                    const Spacer(flex: 2),
+                  _hdrBtn(Icons.table_restaurant_outlined, 'Table', false,
+                      () => navIndex.value = 2),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
           Row(
             children: [
@@ -761,8 +785,10 @@ class _BillingScreenState extends State<BillingScreen> {
               ],
             ),
           ),
-          SizedBox(height: small ? 8 : 10),
-          if (!searching && small)
+          SizedBox(height: phoneW ? 0 : (small ? 8 : 10)),
+          if (phoneW)
+            const SizedBox.shrink()
+          else if (!searching && small)
             _groupDrop()
           else if (!searching)
             SizedBox(
@@ -794,19 +820,39 @@ class _BillingScreenState extends State<BillingScreen> {
                 ? const Center(child: Text('No dishes found', style: TextStyle(color: kMuted)))
                 : ListenableBuilder(
                     listenable: cart,
-                    builder: (context, _) => GridView.builder(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: small ? 200 : 190,
-                        mainAxisExtent: small
-                            ? (editMode ? 256 : 202)
-                            : (editMode ? 262 : 216),
-                        crossAxisSpacing: small ? 12 : 12,
-                        mainAxisSpacing: small ? 12 : 12,
-                      ),
-                      itemCount: dishes.length,
-                      itemBuilder: (_, i) => _dishCard(dishes[i]),
-                    ),
+                    builder: (context, _) => LayoutBuilder(builder: (context, bc) {
+                      if (!_compactCards(context)) {
+                        // Phone: 3 dishes in a row. The card is just a little
+                        // bigger than the photo (3 px each side).
+                        const gap = 6.0;
+                        final cw = (bc.maxWidth - gap * 2) / 3;
+                        final img = cw - 8;
+                        final h = img + 6 + 3 + 28 + 20 + 2 + (editMode ? 58 : 0);
+                        return GridView.builder(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisExtent: h,
+                            crossAxisSpacing: gap,
+                            mainAxisSpacing: gap,
+                          ),
+                          itemCount: dishes.length,
+                          itemBuilder: (_, i) => _dishCard(dishes[i], img: img),
+                        );
+                      }
+                      // Tablets and the hotel POS machine: small compact cards.
+                      return GridView.builder(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 112,
+                          mainAxisExtent: editMode ? 172 : 112,
+                          crossAxisSpacing: 6,
+                          mainAxisSpacing: 6,
+                        ),
+                        itemCount: dishes.length,
+                        itemBuilder: (_, i) => _dishCard(dishes[i]),
+                      );
+                    }),
                   ),
           ),
         ],
@@ -835,19 +881,23 @@ class _BillingScreenState extends State<BillingScreen> {
     );
   }
 
-  Widget _dishCard(Dish d) {
+  /// Screens 700 wide or more (tablets, the POS machine) get small dish cards.
+  bool _compactCards(BuildContext c) => MediaQuery.of(c).size.width >= 700;
+
+  Widget _dishCard(Dish d, {double? img}) {
     final q = cart.qtyOf(d.id);
     final closed = d.closedToday;
     final small = isNarrow(context);
+    final compact = _compactCards(context);
     return Opacity(
       opacity: closed ? 0.45 : 1,
       child: InkWell(
         borderRadius: BorderRadius.circular(small ? 16 : 14),
         onTap: () => _addDish(d),
         child: Container(
-          padding: small
-              ? const EdgeInsets.fromLTRB(10, 10, 10, 10)
-              : const EdgeInsets.fromLTRB(10, 12, 10, 10),
+          padding: compact
+              ? const EdgeInsets.fromLTRB(6, 6, 6, 6)
+              : const EdgeInsets.all(3),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(small ? 16 : 14),
@@ -858,20 +908,20 @@ class _BillingScreenState extends State<BillingScreen> {
           child: Column(
             crossAxisAlignment: small ? CrossAxisAlignment.start : CrossAxisAlignment.center,
             children: [
-              if (small)
-                Center(child: DishPic(d, size: 108))
+              if (compact)
+                Center(child: DishPic(d, size: 52))
               else
-                DishPic(d, size: 112),
-              SizedBox(height: small ? 6 : 8),
+                Center(child: DishPic(d, size: img ?? 100)),
+              const SizedBox(height: 3),
               Expanded(
                 child: Text(d.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: small ? TextAlign.left : TextAlign.center,
                     style: TextStyle(
-                        fontSize: small ? 12 : 12,
+                        fontSize: 10.5,
                         fontWeight: small ? FontWeight.w700 : FontWeight.w600,
-                        height: 1.2)),
+                        height: 1.15)),
               ),
               if (closed)
                 const Text('Closed today',
@@ -882,20 +932,20 @@ class _BillingScreenState extends State<BillingScreen> {
                       style: TextStyle(
                           color: small ? const Color(0xFFD9530A) : kRed,
                           fontWeight: FontWeight.w800,
-                          fontSize: small ? 15 : 14)),
+                          fontSize: compact ? 12 : 12.5)),
                   const Spacer(),
                   if (q > 0)
                     Padding(
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.only(right: 4),
                       child: Text('x$q',
                           style: const TextStyle(
-                              color: kOrange, fontWeight: FontWeight.w800)),
+                              color: kOrange, fontSize: 12, fontWeight: FontWeight.w800)),
                     ),
                   Container(
-                    width: small ? 24 : 22,
-                    height: small ? 24 : 22,
+                    width: 18,
+                    height: 18,
                     decoration: const BoxDecoration(color: kOrange, shape: BoxShape.circle),
-                    child: Icon(Icons.add, color: Colors.white, size: small ? 16 : 15),
+                    child: Icon(Icons.add, color: Colors.white, size: 13),
                   ),
                 ],
               ),
@@ -1015,7 +1065,17 @@ class _BillingScreenState extends State<BillingScreen> {
                   : const EdgeInsets.fromLTRB(14, 12, 14, 8),
               child: Row(
                 children: [
-                  const Icon(Icons.shopping_bag_outlined, color: kOrange),
+                  if (MediaQuery.of(context).size.width < 800)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Back to dishes',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      icon: const Icon(Icons.arrow_back, color: kOrange),
+                      onPressed: () => setState(() => _showOrder = false),
+                    )
+                  else
+                    const Icon(Icons.shopping_bag_outlined, color: kOrange),
                   const SizedBox(width: 8),
                   Text('Order #$nextNo',
                       style: TextStyle(
